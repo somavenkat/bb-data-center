@@ -162,6 +162,26 @@ export default function App() {
   const gridApiRef = useRef(null);
   const columnApiRef = useRef(null);
   const [globalSearch, setGlobalSearch] = useState("");
+  const [authenticated, setAuthenticated] = useState(() => !!localStorage.getItem('bb_auth'));
+  const [passwordInput, setPasswordInput] = useState('');
+  const [loginError, setLoginError] = useState('');
+  const APP_PASSWORD = import.meta.env.VITE_APP_PASSWORD || '';
+
+  function handleLogin(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    if (!APP_PASSWORD) {
+      setLoginError('No password configured in environment');
+      return;
+    }
+    console.log("APP_PASSWORD", APP_PASSWORD)
+    if (passwordInput === APP_PASSWORD) {
+      localStorage.setItem('bb_auth', '1');
+      setAuthenticated(true);
+      setLoginError('');
+    } else {
+      setLoginError('Incorrect password');
+    }
+  }
 
   function handleDownloadExcel() {
     const api = gridApiRef.current;
@@ -321,6 +341,30 @@ export default function App() {
       .replace(/\n/g, "\\n")
       .replace(/;/g, "\\;")
       .replace(/,/g, "\\,");
+  }
+
+  if (!authenticated) {
+    return (
+      <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Box sx={{ width: 'min(92%,420px)', p: 3, boxShadow: 2, borderRadius: 1 }}>
+          <h2>Enter password to continue</h2>
+          <Box component="form" onSubmit={handleLogin} sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <TextField
+              label="Password"
+              type="password"
+              value={passwordInput}
+              onChange={(e) => setPasswordInput(e.target.value)}
+              size="small"
+              autoFocus
+            />
+            {loginError ? <Box sx={{ color: 'error.main' }}>{loginError}</Box> : null}
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <Button variant="contained" type="submit">Login</Button>
+            </Box>
+          </Box>
+        </Box>
+      </div>
+    );
   }
 
   return (
