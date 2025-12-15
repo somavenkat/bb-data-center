@@ -173,7 +173,6 @@ export default function App() {
       setLoginError('No password configured in environment');
       return;
     }
-    console.log("APP_PASSWORD", APP_PASSWORD)
     if (passwordInput === APP_PASSWORD) {
       localStorage.setItem('bb_auth', '1');
       setAuthenticated(true);
