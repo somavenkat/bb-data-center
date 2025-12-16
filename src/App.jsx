@@ -6,6 +6,7 @@ import Tabs from '@mui/material/Tabs'
 import Tab from '@mui/material/Tab'
 import LeanderTable from './components/LeanderTable'
 import AustingTable from './components/AustingTable'
+import StaffTable from './components/StaffTable'
 
 export default function App() {
   const [authenticated, setAuthenticated] = useState(() => !!localStorage.getItem('bb_auth'))
@@ -214,11 +215,13 @@ export default function App() {
       <Tabs value={tabIndex} onChange={(_, v) => setTabIndex(v)} centered>
         <Tab label="Austin" />
         <Tab label="Leander" />
+        <Tab label="Staff" />
       </Tabs>
 
       <Box sx={{ mt: 2 }}>
         {tabIndex === 0 && <AustingTable />}
         {tabIndex === 1 && <LeanderTable />}
+        {tabIndex === 2 && <StaffTable />}
       </Box>
     </Box>
   )
