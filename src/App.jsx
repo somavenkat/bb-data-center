@@ -1,185 +1,30 @@
-import React, { useMemo, useRef, useState } from "react";
-import Button from "@mui/material/Button";
-import TextField from "@mui/material/TextField";
-import Box from "@mui/material/Box";
-import * as XLSX from "xlsx";
-import { AgGridReact } from "ag-grid-react";
-import "ag-grid-community/styles/ag-grid.css";
-import "ag-grid-community/styles/ag-theme-alpine.css";
-
-const modules = import.meta.glob("./data/*.json", { as: "json", eager: true });
+import React, { useState } from 'react'
+import Box from '@mui/material/Box'
+import Button from '@mui/material/Button'
+import TextField from '@mui/material/TextField'
+import Tabs from '@mui/material/Tabs'
+import Tab from '@mui/material/Tab'
+import LeanderTable from './components/LeanderTable'
+import AustingTable from './components/AustingTable'
 
 export default function App() {
-  const entries = useMemo(() => {
-    return Object.entries(modules).map(([path, data]) => {
-      const normalized = data?.default ?? data;
-      return { path, data: normalized };
-    });
-  }, []);
-
-  // Combine all rows from every file into a single array and stringify nested values
-  const combinedRows = useMemo(() => {
-    return entries.flatMap(({ path, data }) => {
-      const rows = data?.rows ?? [];
-      const filename = path.replace(/.*\//, "");
-      return (Array.isArray(rows) ? rows : []).map((raw) => {
-        const row = { __source: filename };
-        Object.entries(raw || {}).forEach(([k, v]) => {
-          if (v === undefined || v === null) {
-            row[k] = v;
-          } else if (typeof v === "object") {
-            try {
-              row[k] = JSON.stringify(v);
-            } catch (e) {
-              row[k] = String(v);
-            }
-          } else {
-            row[k] = v;
-          }
-        });
-        return row;
-      });
-    });
-  }, [entries]);
-
-  // derive a compact set of display rows with the requested fields
-  const displayRows = useMemo(() => {
-    const extractName = (s) => {
-      if (!s) return "";
-      const m = String(s).match(/>([^<]+)</);
-      if (m && m[1]) return m[1].trim();
-      // fallback: strip tags
-      return String(s)
-        .replace(/<[^>]*>/g, "")
-        .trim();
-    };
-
-    return combinedRows.map((r) => {
-      const first = extractName(r.firstName);
-      const last = r.lastName || "";
-      const fullName = [first, last].filter(Boolean).join(" ").trim();
-      const centerName = r.name || "";
-      const parentEmail = r.parentEmail || "";
-      const primaryPhone = r.primaryPhone || "";
-      const parentName = r.parentName || "";
-      const parts = [];
-      if (r.streetaddress) parts.push(r.streetaddress);
-      if (r.aptno) parts.push(r.aptno);
-      if (r.city) parts.push(r.city);
-      const stateZip = [r.state, r.zipcode].filter(Boolean).join(" ");
-      if (stateZip) parts.push(stateZip);
-      const address = parts.join(", ");
-      return {
-        fullName,
-        centerName,
-        parentEmail,
-        primaryPhone,
-        parentName,
-        address,
-      };
-    });
-  }, [combinedRows]);
-
-  // helper used by contact export too
-  const extractFirstName = (s) => {
-    if (!s) return "";
-    const m = String(s).match(/>([^<]+)</);
-    if (m && m[1]) return m[1].trim();
-    return String(s)
-      .replace(/<[^>]*>/g, "")
-      .trim();
-  };
-
-  const displayHeaders = [
-    "fullName",
-    "centerName",
-    "parentEmail",
-    "primaryPhone",
-    "parentName",
-    "address",
-  ];
-
-  const columnDefs = useMemo(
-    () => [
-       {
-        field: "parentName",
-        headerName: "Parent Name",
-        sortable: true,
-        filter: true,
-        resizable: true,
-        flex: 1,
-        minWidth: 160,
-      },
-       {
-        field: "parentEmail",
-        headerName: "Parent Email",
-        sortable: true,
-        filter: true,
-        resizable: true,
-        flex: 1,
-        minWidth: 140,
-      },
-      {
-        field: "centerName",
-        headerName: "Center",
-        sortable: true,
-        filter: true,
-        resizable: true,
-        flex: 1,
-        minWidth: 140,
-      },
-       {
-        field: "primaryPhone",
-        headerName: "Phone",
-        sortable: true,
-        filter: true,
-        resizable: true,
-        flex: 1,
-        minWidth: 120,
-      },
-      {
-        field: "fullName",
-        headerName: "Student Full Name",
-        sortable: true,
-        filter: true,
-        resizable: true,
-        flex: 1,
-        minWidth: 130,
-      },
-      {
-        field: "address",
-        headerName: "Address",
-        sortable: true,
-        filter: true,
-        resizable: true,
-        flex: 2,
-        minWidth: 220,
-      },
-    ],
-    []
-  );
-
-  const gridApiRef = useRef(null);
-  const columnApiRef = useRef(null);
-  const [globalSearch, setGlobalSearch] = useState("");
-  const [authenticated, setAuthenticated] = useState(() => !!localStorage.getItem('bb_auth'));
-  const [passwordInput, setPasswordInput] = useState('');
-  const [loginError, setLoginError] = useState('');
-  const APP_PASSWORD = import.meta.env.VITE_APP_PASSWORD || '';
+  const [authenticated, setAuthenticated] = useState(() => !!localStorage.getItem('bb_auth'))
+  const [passwordInput, setPasswordInput] = useState('')
+  const [loginError, setLoginError] = useState('')
+  const APP_PASSWORD = import.meta.env.VITE_APP_PASSWORD || ''
+  const [tabIndex, setTabIndex] = useState(0)
 
   function handleLogin(e) {
-    if (e && e.preventDefault) e.preventDefault();
-    if (!APP_PASSWORD) {
-      setLoginError('No password configured in environment');
-      return;
-    }
-    if (passwordInput === APP_PASSWORD) {
-      localStorage.setItem('bb_auth', '1');
-      setAuthenticated(true);
-      setLoginError('');
-    } else {
-      setLoginError('Incorrect password');
-    }
+    if (e && e.preventDefault) e.preventDefault()
+    if (!APP_PASSWORD) { setLoginError('No password configured in environment'); return }
+    if (passwordInput === APP_PASSWORD) { localStorage.setItem('bb_auth', '1'); setAuthenticated(true); setLoginError('') }
+    else setLoginError('Incorrect password')
+  }
+
+  function handleLogout() {
+    localStorage.removeItem('bb_auth')
+    setAuthenticated(false)
+    setPasswordInput('')
   }
 
   function handleDownloadExcel() {
@@ -348,14 +193,7 @@ export default function App() {
         <Box sx={{ width: 'min(92%,420px)', p: 3, boxShadow: 2, borderRadius: 1 }}>
           <h2>Enter password to continue</h2>
           <Box component="form" onSubmit={handleLogin} sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <TextField
-              label="Password"
-              type="password"
-              value={passwordInput}
-              onChange={(e) => setPasswordInput(e.target.value)}
-              size="small"
-              autoFocus
-            />
+            <TextField label="Password" type="password" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} size="small" autoFocus />
             {loginError ? <Box sx={{ color: 'error.main' }}>{loginError}</Box> : null}
             <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
               <Button variant="contained" type="submit">Login</Button>
@@ -363,89 +201,25 @@ export default function App() {
           </Box>
         </Box>
       </div>
-    );
+    )
   }
 
   return (
-    <div className="container">
-      <h1>All Centers Data</h1>
+    <Box sx={{ width: '100%', p: 2 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+        <h1 style={{ margin: 0 }}>All Centers Data</h1>
+        <Button color="inherit" onClick={handleLogout}>Logout</Button>
+      </Box>
 
-      {entries.length === 0 ? (
-        <p>No JSON files found in project root.</p>
-      ) : (
-        <>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexDirection: { xs: 'column', sm: 'row' }, mb: 2 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%' }}>
-              <TextField
-                size="small"
-                label="Global Search"
-                value={globalSearch}
-                sx={{ flex: 1, minWidth: 0 }}
-                onChange={(e) => {
-                  const v = e.target.value
-                  setGlobalSearch(v)
-                  if (gridApiRef.current) gridApiRef.current.setQuickFilter(v)
-                }}
-              />
-              <Button size="small" onClick={() => { setGlobalSearch(''); if (gridApiRef.current) gridApiRef.current.setQuickFilter('') }}>Clear</Button>
-            </Box>
+      <Tabs value={tabIndex} onChange={(_, v) => setTabIndex(v)} centered>
+        <Tab label="Austin" />
+        <Tab label="Leander" />
+      </Tabs>
 
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%', mt: { xs: 1, sm: 0 }, justifyContent: { xs: 'flex-start', sm: 'flex-end' } }}>
-              <Button variant="contained" onClick={handleDownloadExcel} disabled={combinedRows.length === 0}>
-                Download Excel
-              </Button>
-              
-            </Box>
-            <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', mt: { xs: 1, sm: 0 }, justifyContent: { xs: 'flex-start', sm: 'flex-end' } }}>
-              <Button variant="outlined" onClick={() => handleDownloadContacts()} disabled={combinedRows.length === 0}>
-                Import Contacts
-              </Button>
-              <Box sx={{ml: { xs: 2, sm: 0, md: 2 }}} component="span">{combinedRows.length} total rows</Box>
-              
-            </Box>
-          </Box>
-
-          {combinedRows.length === 0 ? (
-            <p>No rows found in the JSON files.</p>
-          ) : (
-            <div
-              className="ag-theme-alpine"
-              style={{ height: "70vh", width: "100%" }}
-            >
-              <AgGridReact
-                rowData={displayRows}
-                columnDefs={columnDefs}
-                defaultColDef={{
-                  sortable: true,
-                  filter: true,
-                  resizable: true,
-                  wrapHeaderText: true,
-                  autoHeaderHeight: true,
-                  minWidth: 100,
-                }}
-                headerHeight={56}
-                onGridReady={(params) => {
-                  gridApiRef.current = params.api;
-                  columnApiRef.current = params.columnApi;
-                  // allow the grid to render, then auto-size columns to header/content
-                  setTimeout(() => {
-                    try {
-                      const allCols = params.columnApi.getAllColumns() || [];
-                      const colIds = allCols.map((c) => c.getId());
-                      if (colIds.length) {
-                        params.columnApi.autoSizeColumns(colIds);
-                        // do NOT call sizeColumnsToFit() so columns keep their auto-sized widths
-                      }
-                    } catch (e) {
-                      // ignore sizing errors
-                    }
-                  }, 0);
-                }}
-              />
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  );
+      <Box sx={{ mt: 2 }}>
+        {tabIndex === 0 && <AustingTable />}
+        {tabIndex === 1 && <LeanderTable />}
+      </Box>
+    </Box>
+  )
 }
