@@ -64,8 +64,6 @@ export default function AustingTable() {
 
   const columnDefs = useMemo(() => [
     { field: 'fullName', headerName: 'Student Full Name', sortable: true, filter: true, resizable: true, flex: 1, minWidth: 130 },
-    { field: 'centerName', headerName: 'Center', sortable: true, filter: true, resizable: true, flex: 1, minWidth: 140 },
-    { field: 'parentEmail', headerName: 'Parent Email', sortable: true, filter: true, resizable: true, flex: 1, minWidth: 140 },
     { field: 'primaryPhone', headerName: 'Phone', sortable: true, filter: true, resizable: true, flex: 1, minWidth: 120,
       cellRenderer: (params) => {
         const v = params.value || ''
@@ -73,6 +71,9 @@ export default function AustingTable() {
         return (<a href={`tel:${tel}`}>{v}</a>)
       }
     },
+    { field: 'centerName', headerName: 'Center', sortable: true, filter: true, resizable: true, flex: 1, minWidth: 140 },
+    { field: 'parentEmail', headerName: 'Parent Email', sortable: true, filter: true, resizable: true, flex: 1, minWidth: 140 },
+    
     { field: 'parentName', headerName: 'Parent Name', sortable: true, filter: true, resizable: true, flex: 1, minWidth: 160 },
     { field: 'address', headerName: 'Address', sortable: true, filter: true, resizable: true, flex: 2, minWidth: 220 }
   ], [])
