@@ -14,9 +14,10 @@ export default function App() {
   const [loginError, setLoginError] = useState('')
   const APP_PASSWORD = import.meta.env.VITE_APP_PASSWORD || ''
   const [tabIndex, setTabIndex] = useState(0)
-
   function handleLogin(e) {
     if (e && e.preventDefault) e.preventDefault()
+      console.log("passwordInput", passwordInput);
+    console.log("APP_PASSWORD", APP_PASSWORD)
     if (!APP_PASSWORD) { setLoginError('No password configured in environment'); return }
     if (passwordInput === APP_PASSWORD) { localStorage.setItem('bb_auth', '1'); setAuthenticated(true); setLoginError('') }
     else setLoginError('Incorrect password')
