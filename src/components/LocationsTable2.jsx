@@ -151,14 +151,14 @@ export default function LocationsTable2() {
     for (let i = 0; i < placeIds.length; i += concurrency) {
       const batch = placeIds.slice(i, i + concurrency)
       const promises = batch.map(id => new Promise(resolve => {
-        service.getDetails({ placeId: id, fields: ['name', 'formatted_address', 'geometry', 'rating', 'user_ratings_total', 'website', 'formatted_phone_number'] }, (result, status) => {
-          if (status === window.google.maps.places.PlacesServiceStatus.OK && result) resolve(result)
-          else {
-            console.error('getDetails failed', id, status)
-            resolve(null)
-          }
-        })
-      }))
+          service.getDetails({ placeId: id, fields: ['name', 'formatted_address', 'geometry'] }, (result, status) => {
+            if (status === window.google.maps.places.PlacesServiceStatus.OK && result) resolve(result)
+            else {
+              console.error('getDetails failed', id, status)
+              resolve(null)
+            }
+          })
+        }))
       const results = await Promise.all(promises)
       out.push(...results.filter(Boolean))
     }
@@ -214,10 +214,6 @@ export default function LocationsTable2() {
           address: d.formatted_address || near.vicinity || '',
           lat,
           lng,
-          rating: d.rating ?? null,
-          user_ratings_total: d.user_ratings_total ?? null,
-          website: d.website ?? '',
-          phone: d.formatted_phone_number ?? '',
         }
       })
 
@@ -235,23 +231,23 @@ export default function LocationsTable2() {
 
   const filteredLocations = useMemo(() => {
     if (!centerCoords) return []
-    return locations.map(loc => {
+    const arr = locations.map(loc => {
       const distance = haversineDistance(centerCoords.lat, centerCoords.lng, loc.lat, loc.lng)
       return { ...loc, distance: parseFloat(distance.toFixed(2)) }
     }).filter(l => l.distance <= radius)
+    arr.sort((a, b) => (a.distance ?? 0) - (b.distance ?? 0))
+    return arr
   }, [radius, locations, centerCoords])
 
   const columnDefs = useMemo(() => [
     { field: 'name', headerName: 'Name', flex: 1, minWidth: 180 },
     { field: 'address', headerName: 'Full Address', flex: 1.4, minWidth: 220 },
-    { field: 'distance', headerName: 'Distance (miles)', flex: 0.6, minWidth: 130 },
-    { field: 'rating', headerName: 'Rating', flex: 0.4, minWidth: 90 },
-    { field: 'phone', headerName: 'Phone', flex: 0.6, minWidth: 120 },
-    { field: 'website', headerName: 'Website', flex: 0.8, minWidth: 140 },
+    { field: 'distance', headerName: 'Distance (miles)', flex: 0.6, minWidth: 130, sort: 'asc', sortIndex: 0 },
+    // removed rating/phone/website per request
   ], [])
 
-  const displayRows = useMemo(() => filteredLocations.map(r => ({ name: r.name, address: r.address, distance: r.distance, rating: r.rating ?? '', phone: r.phone ?? '', website: r.website ?? '' })), [filteredLocations])
-  const displayHeaders = ['name','address','distance','rating','phone','website']
+  const displayRows = useMemo(() => filteredLocations.map(r => ({ name: r.name, address: r.address, distance: r.distance })), [filteredLocations])
+  const displayHeaders = ['name','address','distance']
 
   function exportExcel() {
     if (!displayRows || !displayRows.length) return
