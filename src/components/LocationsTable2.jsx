@@ -1,7 +1,9 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react'
 import Box from '@mui/material/Box'
 import TextField from '@mui/material/TextField'
+import Button from '@mui/material/Button'
 import CircularProgress from '@mui/material/CircularProgress'
+import * as XLSX from 'xlsx'
 import { AgGridReact } from 'ag-grid-react'
 import 'ag-grid-community/styles/ag-grid.css'
 import 'ag-grid-community/styles/ag-theme-alpine.css'
@@ -56,6 +58,7 @@ export default function LocationsTable2() {
   const [centerCoords, setCenterCoords] = useState(null) // { lat, lng }
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [globalSearch, setGlobalSearch] = useState('')
   const mapRef = useRef(null)
   const mapInstanceRef = useRef(null)
   const markersRef = useRef([])
@@ -242,7 +245,24 @@ export default function LocationsTable2() {
     { field: 'name', headerName: 'Name', flex: 1, minWidth: 180 },
     { field: 'address', headerName: 'Full Address', flex: 1.4, minWidth: 220 },
     { field: 'distance', headerName: 'Distance (miles)', flex: 0.6, minWidth: 130 },
+    { field: 'rating', headerName: 'Rating', flex: 0.4, minWidth: 90 },
+    { field: 'phone', headerName: 'Phone', flex: 0.6, minWidth: 120 },
+    { field: 'website', headerName: 'Website', flex: 0.8, minWidth: 140 },
   ], [])
+
+  const displayRows = useMemo(() => filteredLocations.map(r => ({ name: r.name, address: r.address, distance: r.distance, rating: r.rating ?? '', phone: r.phone ?? '', website: r.website ?? '' })), [filteredLocations])
+  const displayHeaders = ['name','address','distance','rating','phone','website']
+
+  function exportExcel() {
+    if (!displayRows || !displayRows.length) return
+    const headerLabels = displayHeaders
+    const keys = displayHeaders
+    const aoa = [headerLabels, ...displayRows.map(r => keys.map(k => r[k] ?? ''))]
+    const ws = XLSX.utils.aoa_to_sheet(aoa)
+    const cols = keys.map((_, i) => ({ wch: Math.min(Math.max(12, String(headerLabels[i] || '').length + 6), 120) }))
+    ws['!cols'] = cols
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'locations'); XLSX.writeFile(wb, 'locations.xlsx')
+  }
 
   // Initialize/update Leaflet map and markers
   useEffect(() => {
@@ -312,16 +332,23 @@ export default function LocationsTable2() {
 
       <Box sx={{ flex: 1, minWidth: { xs: '100%', lg: '45%' } }}>
         <Box sx={{ mb: 2 }}>
-          {loading ? (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <CircularProgress size={20} />
-              <Box>Loading locations from Google Places...</Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexDirection: { xs: 'column', sm: 'row' } }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1, minWidth: 0 }}>
+              <TextField size="small" label="Global Search" value={globalSearch} sx={{ flex: 1, minWidth: 0 }} onChange={(e) => { const v = e.target.value; setGlobalSearch(v); if (gridApiRef.current) gridApiRef.current.setQuickFilter(v) }} />
+              <Button size="small" onClick={() => { setGlobalSearch(''); if (gridApiRef.current) gridApiRef.current.setQuickFilter('') }}>Clear</Button>
             </Box>
-          ) : error ? (
-            <Box sx={{ color: 'error.main' }}>Error: {error}</Box>
-          ) : filteredLocations.length === 0 ? (
-            <Box>No results found within {radius} miles.</Box>
-          ) : null}
+
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: { xs: 1, sm: 0 }, justifyContent: { xs: 'flex-start', sm: 'flex-end' } }}>
+              <Button variant="contained" onClick={exportExcel} disabled={!displayRows.length}>Download Excel</Button>
+              {loading ? (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><CircularProgress size={20} /><Box>Loading locations...</Box></Box>
+              ) : error ? (
+                <Box sx={{ color: 'error.main' }}>Error: {error}</Box>
+              ) : filteredLocations.length === 0 ? (
+                <Box>No results found within {radius} miles.</Box>
+              ) : null}
+            </Box>
+          </Box>
         </Box>
 
         <div className="ag-theme-alpine" style={{ height: '500px', width: '100%', borderRadius: 4, border: '1px solid #ddd' }}>
