@@ -50,7 +50,7 @@ function haversineDistance(lat1, lon1, lat2, lon2) {
   return R * c
 }
 
-export default function LocationsTable2({ dataFile, apiUrl } = {}) {
+export default function LocationsTable2() {
   const [radius, setRadius] = useState(5)
   const [locations, setLocations] = useState([])
   const [centerCoords, setCenterCoords] = useState(null) // { lat, lng }
@@ -62,70 +62,100 @@ export default function LocationsTable2({ dataFile, apiUrl } = {}) {
   const circleRef = useRef(null)
   const gridApiRef = useRef(null)
 
-  // `dataFile` prop can be provided as filename (e.g. '665.json' or 'aus/436.json').
-  // If not provided, the component will pick the first JSON it finds under `src/data`.
-  // Using `import.meta.glob` to dynamically discover JSON modules.
   // Google Maps API key (from environment). DO NOT hardcode the key in source.
   const GMAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY
 
-  // Geocode the MAIN_LOCATION.address and then search Places nearby.
-  async function fetchGeocode(address) {
-    if (!GMAPS_KEY) throw new Error('VITE_GOOGLE_MAPS_API_KEY not set')
-    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${GMAPS_KEY}`
-    const res = await fetch(url)
-    if (!res.ok) throw new Error(`Geocode HTTP ${res.status}`)
-    const data = await res.json()
-    if (!data.results || data.results.length === 0) throw new Error('No geocode result')
-    const loc = data.results[0].geometry.location
-    return { lat: loc.lat, lng: loc.lng }
+  // Load Google Maps JavaScript SDK (with Places library)
+  function loadGoogleMapsScript() {
+    if (typeof window === 'undefined') return Promise.reject(new Error('No window'))
+    if (window.google && window.google.maps && window.google.maps.places) return Promise.resolve(window.google)
+    if (!GMAPS_KEY) return Promise.reject(new Error('VITE_GOOGLE_MAPS_API_KEY not set'))
+    return new Promise((resolve, reject) => {
+      const existing = document.querySelector(`script[data-google-maps]`)
+      if (existing) {
+        existing.addEventListener('load', () => resolve(window.google))
+        existing.addEventListener('error', () => reject(new Error('Google Maps script failed to load')))
+        return
+      }
+      const script = document.createElement('script')
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${GMAPS_KEY}&libraries=places&v=weekly`
+      script.async = true
+      script.defer = true
+      script.setAttribute('data-google-maps', 'true')
+      script.onload = () => resolve(window.google)
+      script.onerror = () => reject(new Error('Google Maps script failed to load'))
+      document.head.appendChild(script)
+    })
   }
 
-  // Helper to pause for token activation (Places API next_page_token delay)
-  const pause = ms => new Promise(r => setTimeout(r, ms))
-
-  // Fetch Nearby Search results for a single keyword, handling pagination
-  async function fetchNearbyAll(location, radiusMeters, keyword) {
-    if (!GMAPS_KEY) throw new Error('VITE_GOOGLE_MAPS_API_KEY not set')
-    const results = []
-    let pageToken = null
-    do {
-      const params = new URLSearchParams({
-        key: GMAPS_KEY,
-        location: `${location.lat},${location.lng}`,
-        radius: String(radiusMeters),
-        keyword: keyword,
-      })
-      if (pageToken) params.set('pagetoken', pageToken)
-      const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?${params.toString()}`
-      const res = await fetch(url)
-      if (!res.ok) throw new Error(`Places HTTP ${res.status}`)
-      const data = await res.json()
-      if (data.results && data.results.length) results.push(...data.results)
-      pageToken = data.next_page_token || null
-      if (pageToken) await pause(1500) // token becomes valid after short delay
-    } while (pageToken)
-    return results
+  // Geocode via Maps JS API
+  function fetchGeocode(address) {
+    return new Promise(async (resolve, reject) => {
+      try {
+        await loadGoogleMapsScript()
+        const geocoder = new window.google.maps.Geocoder()
+        geocoder.geocode({ address }, (results, status) => {
+          if (status !== window.google.maps.GeocoderStatus.OK || !results || results.length === 0) {
+            return reject(new Error('Geocode failed: ' + status))
+          }
+          const loc = results[0].geometry.location
+          resolve({ lat: loc.lat(), lng: loc.lng() })
+        })
+      } catch (e) {
+        reject(e)
+      }
+    })
   }
 
-  // Fetch place details (to get formatted_address) with limited concurrency
+  // Use PlacesService.nearbySearch with pagination handling
+  function fetchNearbyAll(location, radiusMeters, keyword) {
+    return new Promise(async (resolve, reject) => {
+      try {
+        await loadGoogleMapsScript()
+        const service = new window.google.maps.places.PlacesService(document.createElement('div'))
+        const allResults = []
+        const request = {
+          location: new window.google.maps.LatLng(location.lat, location.lng),
+          radius: radiusMeters,
+          keyword,
+        }
+
+        const handle = (results, status, pagination) => {
+          if (status !== window.google.maps.places.PlacesServiceStatus.OK && status !== window.google.maps.places.PlacesServiceStatus.ZERO_RESULTS) {
+            return reject(new Error('Places nearbySearch failed: ' + status))
+          }
+          if (results && results.length) allResults.push(...results)
+          if (pagination && pagination.hasNextPage) {
+            // nextPage must be called after a short delay per Google documentation
+            setTimeout(() => pagination.nextPage(), 1500)
+          } else {
+            resolve(allResults)
+          }
+        }
+
+        service.nearbySearch(request, handle)
+      } catch (e) {
+        reject(e)
+      }
+    })
+  }
+
+  // Fetch place details via PlacesService.getDetails
   async function fetchPlaceDetailsBatch(placeIds, concurrency = 6) {
-    if (!GMAPS_KEY) throw new Error('VITE_GOOGLE_MAPS_API_KEY not set')
+    await loadGoogleMapsScript()
+    const service = new window.google.maps.places.PlacesService(document.createElement('div'))
     const out = []
     for (let i = 0; i < placeIds.length; i += concurrency) {
       const batch = placeIds.slice(i, i + concurrency)
-      const promises = batch.map(async id => {
-        const params = new URLSearchParams({ key: GMAPS_KEY, place_id: id, fields: 'name,formatted_address,geometry' })
-        const url = `https://maps.googleapis.com/maps/api/place/details/json?${params.toString()}`
-        try {
-          const res = await fetch(url)
-          if (!res.ok) throw new Error(`Details HTTP ${res.status}`)
-          const data = await res.json()
-          if (data.result) return data.result
-        } catch (e) {
-          console.error('Place details failed', e)
-        }
-        return null
-      })
+      const promises = batch.map(id => new Promise(resolve => {
+        service.getDetails({ placeId: id, fields: ['name', 'formatted_address', 'geometry', 'rating', 'user_ratings_total', 'website', 'formatted_phone_number'] }, (result, status) => {
+          if (status === window.google.maps.places.PlacesServiceStatus.OK && result) resolve(result)
+          else {
+            console.error('getDetails failed', id, status)
+            resolve(null)
+          }
+        })
+      }))
       const results = await Promise.all(promises)
       out.push(...results.filter(Boolean))
     }
@@ -133,21 +163,10 @@ export default function LocationsTable2({ dataFile, apiUrl } = {}) {
   }
 
   // Main loader: either use provided apiUrl, or use Google Maps Geocode+Places
-  async function loadData(dataFile, apiUrl) {
+  async function loadData() {
     setError(null)
     setLoading(true)
     try {
-      if (apiUrl) {
-        // custom API provided by caller
-        const res = await fetch(apiUrl)
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        const data = await res.json()
-        const arr = Array.isArray(data) ? data : data.locations ?? data.results ?? []
-        setLocations(arr)
-        setLoading(false)
-        return
-      }
-
       // Use Google Maps Geocoding to resolve the center
       const center = await fetchGeocode(MAIN_LOCATION.address)
       setCenterCoords(center)
@@ -157,29 +176,47 @@ export default function LocationsTable2({ dataFile, apiUrl } = {}) {
 
       // keywords to search for apartments/communities
       const keywords = ['apartment', 'apartment complex', 'apartments', 'community']
-      const placeMap = new Map()
 
+      // Collect place_ids only from nearbySearch results, but keep minimal nearby info (vicinity)
+      const nearbyInfo = new Map()
       for (const kw of keywords) {
         const nearby = await fetchNearbyAll(center, radiusMeters, kw)
-        nearby.forEach(p => placeMap.set(p.place_id, p))
+        // nearby is an array of PlaceResult objects from nearbySearch
+        nearby.forEach(p => {
+          if (p && p.place_id) {
+            if (!nearbyInfo.has(p.place_id)) nearbyInfo.set(p.place_id, { vicinity: p.vicinity, types: p.types })
+          }
+        })
       }
 
-      const placeIds = Array.from(placeMap.keys())
+      const placeIds = Array.from(nearbyInfo.keys())
       if (placeIds.length === 0) {
         setLocations([])
         setLoading(false)
         return
       }
 
+      // Fetch details for each place_id using PlacesService.getDetails
       const details = await fetchPlaceDetailsBatch(placeIds)
 
-      // Map details to normalized locations
-      const mapped = details.map(d => ({
-        name: d.name,
-        address: d.formatted_address || d.vicinity || '',
-        lat: d.geometry?.location?.lat,
-        lng: d.geometry?.location?.lng,
-      }))
+      // Merge nearbySearch info and details into final dataset
+      const mapped = details.map(d => {
+        const id = d.place_id
+        const near = nearbyInfo.get(id) || {}
+        const lat = d.geometry?.location?.lat?.() ?? d.geometry?.location?.lat ?? null
+        const lng = d.geometry?.location?.lng?.() ?? d.geometry?.location?.lng ?? null
+        return {
+          place_id: id,
+          name: d.name || '',
+          address: d.formatted_address || near.vicinity || '',
+          lat,
+          lng,
+          rating: d.rating ?? null,
+          user_ratings_total: d.user_ratings_total ?? null,
+          website: d.website ?? '',
+          phone: d.formatted_phone_number ?? '',
+        }
+      })
 
       setLocations(mapped)
     } catch (e) {
@@ -191,10 +228,7 @@ export default function LocationsTable2({ dataFile, apiUrl } = {}) {
     }
   }
 
-  // load data on mount or when `dataFile`/`apiUrl` changes
-  useEffect(() => {
-    loadData(dataFile, apiUrl)
-  }, [dataFile, apiUrl])
+  
 
   const filteredLocations = useMemo(() => {
     if (!centerCoords) return []
@@ -251,12 +285,11 @@ export default function LocationsTable2({ dataFile, apiUrl } = {}) {
     }
   }, [filteredLocations])
 
-  // When radius or data source changes, reload using Google APIs (unless custom apiUrl provided)
+  // When radius changes, reload using Google Maps JS SDK
   useEffect(() => {
-    // only load after component mounts; loadData will handle apiUrl if provided
-    loadData(dataFile, apiUrl)
+    loadData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [radius, dataFile, apiUrl])
+  }, [radius])
 
   return (
     <Box sx={{ display: 'flex', flexDirection: { xs: 'column', lg: 'row' }, gap: 2 }}>
