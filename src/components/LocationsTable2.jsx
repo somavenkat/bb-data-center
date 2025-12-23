@@ -395,8 +395,6 @@ export default function LocationsTable2() {
             rowData={filteredLocations}
             columnDefs={columnDefs}
             defaultColDef={{ sortable: true, filter: true, resizable: true }}
-            pagination={true}
-            paginationPageSize={10}
             rowHeight={45}
             headerHeight={40}
             onGridReady={params => {
