@@ -39,6 +39,8 @@ const MAIN_LOCATION = {
   address: '610 Brashear Lane, Cedar Park, Texas',
 }
 
+const CACHE_KEY = 'locationsTable2_cache_v1'
+
 // Locations will be loaded dynamically from JSON files in `src/data`.
 // Use Vite's `import.meta.glob` to locate and load JSON modules at build/dev time.
 
@@ -218,6 +220,12 @@ export default function LocationsTable2() {
       })
 
       setLocations(mapped)
+      // persist to sessionStorage to avoid reloading on tab switches
+      try {
+        if (typeof window !== 'undefined' && window.sessionStorage) {
+          window.sessionStorage.setItem(CACHE_KEY, JSON.stringify({ locations: mapped, centerCoords: center, timestamp: Date.now() }))
+        }
+      } catch (e) {}
     } catch (e) {
       console.error(e)
       setError(e.message || String(e))
@@ -303,9 +311,44 @@ export default function LocationsTable2() {
 
   // When radius changes, reload using Google Maps JS SDK
   useEffect(() => {
+    // try using cached data first to avoid re-loading each time user navigates to the tab
+    try {
+      if (typeof window !== 'undefined' && window.sessionStorage) {
+        const raw = window.sessionStorage.getItem(CACHE_KEY)
+        if (raw) {
+          const parsed = JSON.parse(raw)
+          if (parsed && parsed.locations && parsed.centerCoords) {
+            setLocations(parsed.locations)
+            setCenterCoords(parsed.centerCoords)
+            setLoading(false)
+            return
+          }
+        }
+      }
+    } catch (e) {}
     loadData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [radius])
+
+  // on mount: try to restore cache so navigating back to this tab doesn't re-fetch
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined' && window.sessionStorage) {
+        const raw = window.sessionStorage.getItem(CACHE_KEY)
+        if (raw) {
+          const parsed = JSON.parse(raw)
+          if (parsed && parsed.locations && parsed.centerCoords) {
+            setLocations(parsed.locations)
+            setCenterCoords(parsed.centerCoords)
+            return
+          }
+        }
+      }
+    } catch (e) {}
+    // if no cache, load initially
+    loadData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return (
     <Box sx={{ display: 'flex', flexDirection: { xs: 'column', lg: 'row' }, gap: 2 }}>
